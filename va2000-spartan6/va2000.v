@@ -547,7 +547,6 @@ parameter Z3_REGREAD = 32;
 parameter Z2_PRE_CONFIGURED = 34;
 parameter Z2_ENDCYCLE = 35;
 
-parameter RESET_DVID = 39;
 parameter COLD = 40;
 
 reg [6:0] zorro_state = COLD;
@@ -984,6 +983,8 @@ reg blitter_diry = 0;
 
 reg [4:0] dtack_time = 0;
 reg [5:0] dvid_reset_counter = 0;
+parameter DVID_RESET_CYCLES = 63; // z_sample_clk cycles the DVI output is held in reset
+reg video_defaults_pending = 1; // apply passthrough video defaults (power-up, Amiga reset)
 reg z2_addr_valid = 0;
 reg z3_end_cycle = 0;
 
@@ -1046,8 +1047,95 @@ always @(posedge z_sample_clk) begin
   end
 `endif
 
+  // Video passthrough defaults. Applied at power-up and while the Amiga is in
+  // reset, independent of the Zorro autoconfig state, so the scandoubler output
+  // runs even when the card is never configured (e.g. under DiagROM).
+  if (video_defaults_pending) begin
+    vga_clk_sel  <= 1;
+
+    // new default mode is 640x480 wrapped in 800x600@60hz
+    screen_w     <= videocap_default_w;
+    h_rez        <= videocap_default_w;
+    h_sync_start <= 832;
+    h_sync_end   <= 896;
+    h_max        <= 1048;
+
+    screen_h     <= videocap_default_h;
+    v_rez        <= videocap_default_h;
+    v_sync_start <= 601;
+    v_sync_end   <= 604;
+    v_max        <= 631;
+
+    row_pitch    <= 1024;
+
+    //safe_x1 <= 'h1ff;
+    safe_x2 <= 'h1e0;
+    fetch_preroll <= 'h1e0;
+    ram_fetch_delay2_max <= 'h0;
+
+    videocap_mode <= 1;
+    blitter_enable <= 0;
+    pan_ptr <= 'hf80000; // capture vertical offset
+    colormode <= 1;
+    blitter_colormode <= 1;
+    blitter_row_pitch <= 640;
+
+    scalemode_h <= 0;
+    scalemode_v <= 0;
+    margin_x <= 0;
+
+    `ifdef SIMULATION
+    videocap_mode <= 0;
+    blitter_enable <= 2;
+    pan_ptr <= 'h000000;
+    blitter_base <= 0;
+    //blitter_base <= 'hf80000; // capture vertical offset
+
+    blitter_x4 <= 0;
+    blitter_y3 <= 128;
+    blitter_x3 <= 64;
+    blitter_y4 <= 128+100;
+
+    blitter_x2 <= 5;
+    blitter_y1 <= 128;
+    blitter_x1 <= 5+64;
+    blitter_y2 <= 128+100;
+
+    blitter_curx <= 5+64;
+    blitter_cury <= 128;
+    blitter_curx2 <= 64;
+    blitter_cury2 <= 128;
+    blitter_ptr <= 128*640;
+    blitter_ptr2 <= 128*640;
+    blitter_dirx <= 1;
+    blitter_diry <= 0;
+
+    blitter_rgb <= 'hffff;
+    blitter_rgb32[0] <= 'hffff;
+    blitter_rgb32[1] <= 'h0000;
+    blitter_rgb32_t <= 1;
+    `endif
+
+    dvid_reset <= 1;
+    if (!z_reset)
+      video_defaults_pending <= 0;
+  end
+  sdram_reset <= video_defaults_pending;
+
+  // release the DVI output reset a fixed time after it was raised
+  if (dvid_reset && !video_defaults_pending) begin
+    if (dvid_reset_counter == DVID_RESET_CYCLES) begin
+      dvid_reset <= 0;
+      dvid_reset_counter <= 0;
+    end else
+      dvid_reset_counter <= dvid_reset_counter + 1'b1;
+  end else
+    dvid_reset_counter <= 0;
+
   if (zorro_state!=COLD && (z_cfgin_lo || z_reset)) begin
     zorro_state <= RESET;
+    if (z_reset)
+      video_defaults_pending <= 1;
   end else
   case (zorro_state)
     COLD: begin
@@ -1055,78 +1143,11 @@ always @(posedge z_sample_clk) begin
     end
 
     RESET: begin
-      vga_clk_sel  <= 1;
-      
-      // new default mode is 640x480 wrapped in 800x600@60hz
-      screen_w     <= videocap_default_w;
-      h_rez        <= videocap_default_w;
-      h_sync_start <= 832;
-      h_sync_end   <= 896;
-      h_max        <= 1048;
-      
-      screen_h     <= videocap_default_h;
-      v_rez        <= videocap_default_h;
-      v_sync_start <= 601;
-      v_sync_end   <= 604;
-      v_max        <= 631;
-      
-      row_pitch    <= 1024;
-      
-      //safe_x1 <= 'h1ff;
-      safe_x2 <= 'h1e0;
-      fetch_preroll <= 'h1e0;
-      ram_fetch_delay2_max <= 'h0;
-      
-      videocap_mode <= 1;
-      blitter_enable <= 0;
-      pan_ptr <= 'hf80000; // capture vertical offset
-      colormode <= 1;
-      blitter_colormode <= 1;
-      blitter_row_pitch <= 640;
-      dvid_reset <= 1;
-      
-      scalemode_h <= 0;
-      scalemode_v <= 0;
-      margin_x <= 0;
-
-      `ifdef SIMULATION
-      videocap_mode <= 0;
-      blitter_enable <= 2;
-      pan_ptr <= 'h000000;
-      blitter_base <= 0;
-      //blitter_base <= 'hf80000; // capture vertical offset
-      
-      blitter_x4 <= 0;
-      blitter_y3 <= 128;
-      blitter_x3 <= 64;
-      blitter_y4 <= 128+100;
-      
-      blitter_x2 <= 5;
-      blitter_y1 <= 128;
-      blitter_x1 <= 5+64;
-      blitter_y2 <= 128+100;
-      
-      blitter_curx <= 5+64;
-      blitter_cury <= 128;
-      blitter_curx2 <= 64;
-      blitter_cury2 <= 128;
-      blitter_ptr <= 128*640;
-      blitter_ptr2 <= 128*640;
-      blitter_dirx <= 1;
-      blitter_diry <= 0;
-      
-      blitter_rgb <= 'hffff;
-      blitter_rgb32[0] <= 'hffff;
-      blitter_rgb32[1] <= 'h0000;
-      blitter_rgb32_t <= 1;
-      `endif
-      
       ram_low   <= 'h600000;
       ram_high  <= 'h600000 + ram_size-4;
       reg_low   <= 'h600000 + ram_size;
       reg_high  <= 'h600000 + ram_size + reg_size;
-      
-      sdram_reset <= 1;
+
       dataout_enable <= 0;
       dataout <= 0;
       slaven <= 0;
@@ -1348,7 +1369,6 @@ always @(posedge z_sample_clk) begin
       
       z_confout <= 1;
       
-      sdram_reset <= 0;
       //blitter_enable <= 1; // clear mem
 
       zorro_state <= CONFIGURED_CLEAR;
@@ -1366,10 +1386,6 @@ always @(posedge z_sample_clk) begin
   
     // ----------------------------------------------------------------------------------
     Z2_IDLE: begin
-      if (dvid_reset) begin
-        dvid_reset_counter <= 2;
-        zorro_state <= RESET_DVID;
-      end else
       if (z2_addr_valid) begin
         `ifdef ANALYZER
           if (!rec_enable && zaddr_in_ram) begin 
@@ -1497,24 +1513,8 @@ always @(posedge z_sample_clk) begin
     
     // ----------------------------------------------------------------------------------
     
-    RESET_DVID: begin
-      if (dvid_reset_counter==0) begin
-        dvid_reset <= 0;
-        if (ZORRO3)
-          zorro_state <= Z3_IDLE;
-        else
-          zorro_state <= Z2_IDLE;
-      end else
-        dvid_reset_counter <= dvid_reset_counter - 1'b1;
-    end
-    
-    // ----------------------------------------------------------------------------------
     // ----------------------------------------------------------------------------------
     Z3_IDLE: begin
-      if (dvid_reset) begin
-        dvid_reset_counter <= 2;
-        zorro_state <= RESET_DVID;
-      end else
       if (z3_fcs_state==0) begin
         // falling edge of /FCS
         
