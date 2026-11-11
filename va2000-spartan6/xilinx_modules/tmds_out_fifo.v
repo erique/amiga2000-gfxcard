@@ -22,7 +22,7 @@
 *     devices, or systems.  Use in such applications are expressly             *
 *     prohibited.                                                              *
 *                                                                              *
-*     (c) Copyright 1995-2018 Xilinx, Inc.                                     *
+*     (c) Copyright 1995-2026 Xilinx, Inc.                                     *
 *     All rights reserved.                                                     *
 *******************************************************************************/
 // You must compile the wrapper file tmds_out_fifo.v when simulating
@@ -37,6 +37,7 @@
 `timescale 1ns/1ps
 
 module tmds_out_fifo(
+  rst,
   wr_clk,
   rd_clk,
   din,
@@ -48,6 +49,7 @@ module tmds_out_fifo(
   prog_empty
 );
 
+input rst;
 input wr_clk;
 input rd_clk;
 input [29 : 0] din;
@@ -145,7 +147,7 @@ output prog_empty;
     .C_HAS_PROG_FLAGS_WRCH(0),
     .C_HAS_RD_DATA_COUNT(0),
     .C_HAS_RD_RST(0),
-    .C_HAS_RST(0),
+    .C_HAS_RST(1),
     .C_HAS_SLAVE_CE(0),
     .C_HAS_SRST(0),
     .C_HAS_UNDERFLOW(0),
@@ -252,6 +254,7 @@ output prog_empty;
     .C_WRCH_TYPE(0)
   )
   inst (
+    .RST(rst),
     .WR_CLK(wr_clk),
     .RD_CLK(rd_clk),
     .DIN(din),
@@ -264,7 +267,6 @@ output prog_empty;
     .BACKUP(),
     .BACKUP_MARKER(),
     .CLK(),
-    .RST(),
     .SRST(),
     .WR_RST(),
     .RD_RST(),

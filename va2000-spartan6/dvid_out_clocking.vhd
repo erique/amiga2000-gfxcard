@@ -30,7 +30,8 @@ entity dvid_out_clocking is
     clk_x1        : out STD_LOGIC;  
     clk_x2        : out STD_LOGIC;  
     clk_x10       : out STD_LOGIC;
-    serdes_strobe : out STD_LOGIC
+    serdes_strobe : out STD_LOGIC;
+    locked        : out STD_LOGIC
   );
 end dvid_out_clocking;
 
@@ -48,6 +49,7 @@ begin
   clk_x1  <= clock_local_x1;
   clk_x2  <= clock_local_x2;
   clk_x10 <= clock_local_x10;
+  locked  <= pll_locked;
 
   -- Multiply clk50m by 10, then :
   -- * divide by 1 for the bit clock (pixel clock x10)

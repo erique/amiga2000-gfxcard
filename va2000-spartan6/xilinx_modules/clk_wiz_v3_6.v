@@ -67,7 +67,7 @@
 
 `timescale 1ps/1ps
 
-(* CORE_GENERATION_INFO = "clk_wiz_v3_6,clk_wiz_v3_6,{component_name=clk_wiz_v3_6,use_phase_alignment=false,use_min_o_jitter=false,use_max_i_jitter=false,use_dyn_phase_shift=false,use_inclk_switchover=false,use_dyn_reconfig=false,feedback_source=FDBK_AUTO,primtype_sel=PLL_BASE,num_out_clk=4,clkin1_period=20.000,clkin2_period=20.000,use_power_down=false,use_reset=false,use_locked=false,use_inclk_stopped=false,use_status=false,use_freeze=false,use_clk_valid=false,feedback_type=SINGLE,clock_mgr_type=AUTO,manual_override=false}" *)
+(* CORE_GENERATION_INFO = "clk_wiz_v3_6,clk_wiz_v3_6,{component_name=clk_wiz_v3_6,use_phase_alignment=false,use_min_o_jitter=false,use_max_i_jitter=false,use_dyn_phase_shift=false,use_inclk_switchover=false,use_dyn_reconfig=false,feedback_source=FDBK_AUTO,primtype_sel=PLL_BASE,num_out_clk=4,clkin1_period=20.000,clkin2_period=20.000,use_power_down=false,use_reset=true,use_locked=true,use_inclk_stopped=false,use_status=false,use_freeze=false,use_clk_valid=false,feedback_type=SINGLE,clock_mgr_type=AUTO,manual_override=false}" *)
 module clk_wiz_v3_6
  (// Clock in ports
   input         CLK_IN1,
@@ -75,14 +75,15 @@ module clk_wiz_v3_6
   output        CLK_OUT1,
   output        CLK_OUT2,
   output        CLK_OUT3,
-  output        CLK_OUT4
+  output        CLK_OUT4,
+  // Status and control signals
+  input         RESET,
+  output        LOCKED
  );
 
   // Input buffering
   //------------------------------------
-  IBUFG clkin1_buf
-   (.O (clkin1),
-    .I (CLK_IN1));
+  assign clkin1 = CLK_IN1;
 
 
   // Clocking primitive
@@ -92,7 +93,6 @@ module clk_wiz_v3_6
   //    * Unused outputs are labeled unused
   wire [15:0] do_unused;
   wire        drdy_unused;
-  wire        locked_unused;
   wire        clkfbout;
   wire        clkout4_unused;
   wire        clkout5_unused;
@@ -127,8 +127,9 @@ module clk_wiz_v3_6
     .CLKOUT3               (clkout3),
     .CLKOUT4               (clkout4_unused),
     .CLKOUT5               (clkout5_unused),
-    .LOCKED                (locked_unused),
-    .RST                   (1'b0),
+    // Status and control signals
+    .LOCKED                (LOCKED),
+    .RST                   (RESET),
      // Input clock control
     .CLKFBIN               (clkfbout),
     .CLKIN                 (clkin1));

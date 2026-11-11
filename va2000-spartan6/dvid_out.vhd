@@ -39,7 +39,8 @@ architecture Behavioral of dvid_out is
     clk_x1 : OUT std_logic;
     clk_x2 : OUT std_logic;
     clk_x10 : OUT std_logic;
-    serdes_strobe : OUT std_logic
+    serdes_strobe : OUT std_logic;
+    locked : OUT std_logic
   );
   END COMPONENT;
 
@@ -55,6 +56,7 @@ architecture Behavioral of dvid_out is
 
   COMPONENT tmds_out_fifo
   PORT (
+    rst        : IN  STD_LOGIC;
     wr_clk     : IN  STD_LOGIC;
     rd_clk     : IN  STD_LOGIC;
     din        : IN  STD_LOGIC_VECTOR(29 DOWNTO 0);
@@ -91,6 +93,14 @@ architecture Behavioral of dvid_out is
   signal rd_enable     : std_logic := '0';
   signal not_ready_yet : std_logic;
 
+  -- The FIFO is held in reset until the TMDS PLL is locked and for
+  -- FIFO_RESET_CYCLES pixel clocks after that, so that both of its clock
+  -- domains see the reset with running clocks.
+  constant FIFO_RESET_CYCLES : integer := 15;
+  signal pll_locked        : std_logic;
+  signal fifo_reset        : std_logic := '1';
+  signal fifo_reset_count  : integer range 0 to FIFO_RESET_CYCLES := 0;
+
   signal c_red       : std_logic_vector(1 downto 0); -- := (others => '0');
   signal c_green     : std_logic_vector(1 downto 0); -- := (others => '0');
   signal c_blue      : std_logic_vector(1 downto 0);
@@ -118,10 +128,26 @@ begin
     clk_x2        => clk_x2,
     clk_x10       => clk_x10,
     serdes_strobe => serdes_strobe,
-    reset => reset
+    reset => reset,
+    locked => pll_locked
   );
 
+  process(clk_pixel, reset, pll_locked)
+  begin
+    if reset = '1' or pll_locked = '0' then
+      fifo_reset       <= '1';
+      fifo_reset_count <= 0;
+    elsif rising_edge(clk_pixel) then
+      if fifo_reset_count = FIFO_RESET_CYCLES then
+        fifo_reset <= '0';
+      else
+        fifo_reset_count <= fifo_reset_count + 1;
+      end if;
+    end if;
+  end process;
+
   out_fifo: tmds_out_fifo PORT MAP (
+    rst    => fifo_reset,
     wr_clk => clk_pixel,
     din    => fifo_in,
     wr_en  => '1',

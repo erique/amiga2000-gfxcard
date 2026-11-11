@@ -267,6 +267,11 @@ assign TMDS_out_P = tmds_out_pbuf;
 assign TMDS_out_N = tmds_out_nbuf;
 reg dvid_reset = 1;
 reg [1:0] dvid_reset_sync = 1;
+`ifdef SIMULATION
+reg dvi_clock_hold = 0;
+`else
+reg dvi_clock_hold = 1; // DVI output held in reset while the main PLL is not locked
+`endif
 reg dvi_vsync_reg;
 
 `ifdef SIMULATION
@@ -291,7 +296,7 @@ dvid_out dvid_out(
   // TMDS outputs
   .tmds_out_p(tmds_out_pbuf),
   .tmds_out_n(tmds_out_nbuf),
-  .reset(dvid_reset_sync[1])
+  .reset(dvid_reset_sync[1] | dvi_clock_hold)
 );
 `endif
 
@@ -604,9 +609,51 @@ reg dcm7_rst = 0;
 reg [7:0] dcm7_counter = 32;
 
 `ifndef SIMULATION
+// The 50 MHz input is buffered onto a global clock so that it can drive both
+// the main PLL and the main PLL reset generator, which must not depend on the
+// PLL it resets.
+wire clk50_ibufg;
+wire clk50_buffered;
+IBUFG clk50_ibuf(.I(CLK50), .O(clk50_ibufg));
+BUFG  clk50_buf(.I(clk50_ibufg), .O(clk50_buffered));
+
+wire main_pll_locked;
+reg  main_pll_reset = 1;
+reg  [1:0] main_pll_locked_sync = 2'b00;
+reg  [15:0] main_pll_counter = 0;
+
+parameter MAIN_PLL_RESET_CYCLES = 50000; // 1 ms at 50 MHz
+parameter MAIN_PLL_LOCK_TIMEOUT = 50000; // 1 ms at 50 MHz
+
+// Main PLL reset generator. Holds the PLL in reset after configuration, then
+// resets it again whenever it fails to (re)acquire lock within the timeout,
+// e.g. after the input clock or supply was disturbed during power-up.
+always @(posedge clk50_buffered) begin
+  main_pll_locked_sync <= {main_pll_locked_sync[0], main_pll_locked};
+
+  if (main_pll_reset) begin
+    if (main_pll_counter == MAIN_PLL_RESET_CYCLES) begin
+      main_pll_reset <= 0;
+      main_pll_counter <= 0;
+    end else
+      main_pll_counter <= main_pll_counter + 1'b1;
+  end else if (!main_pll_locked_sync[1]) begin
+    if (main_pll_counter == MAIN_PLL_LOCK_TIMEOUT) begin
+      main_pll_reset <= 1;
+      main_pll_counter <= 0;
+    end else
+      main_pll_counter <= main_pll_counter + 1'b1;
+  end else
+    main_pll_counter <= 0;
+
+  dvi_clock_hold <= main_pll_reset | ~main_pll_locked_sync[1];
+end
+
 clk_wiz_v3_6 DCM(
-  .CLK_IN1(CLK50),
-  
+  .CLK_IN1(clk50_buffered),
+  .RESET(main_pll_reset),
+  .LOCKED(main_pll_locked),
+
   .CLK_OUT1(z_sample_clk),
   .CLK_OUT2(sd_clk),
   
@@ -2365,7 +2412,7 @@ always @(posedge vga_clk) begin
   vga_h_sync_end <= h_sync_end;
   vga_v_sync_start <= v_sync_start;
   vga_v_sync_end <= v_sync_end;
-  vga_reset <= dvid_reset;
+  vga_reset <= dvid_reset | dvi_clock_hold;
 end
 
 reg [8:0] counter_scanout = 0; // CHECKME
